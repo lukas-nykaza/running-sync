@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running Dashboard</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --row-hover: rgba(11, 11, 11, 0.04);
+  --series: #2a78d6;
+  --series-hover: #1c5cab;
+  --link: #256abf;
+  --button-active: #0b0b0b;
+  --button-active-text: #fcfcfb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --row-hover: rgba(255, 255, 255, 0.05);
+    --series: #3987e5;
+    --series-hover: #6da7ec;
+    --link: #6da7ec;
+    --button-active: #f0efec;
+    --button-active-text: #1a1a19;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --row-hover: rgba(255, 255, 255, 0.05);
+  --series: #3987e5;
+  --series-hover: #6da7ec;
+  --link: #6da7ec;
+  --button-active: #f0efec;
+  --button-active-text: #1a1a19;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 48px; }
+h1 { font-size: 28px; font-weight: 650; margin: 0 0 4px; }
+section { margin-top: 40px; }
+section > h2 { font-size: 22px; font-weight: 650; margin: 0 0 4px; }
+.sub { color: var(--text-secondary); margin: 0 0 16px; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+button {
+  font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-primary);
+}
+button:hover { border-color: var(--text-muted); }
+.filters button[aria-pressed="true"] {
+  background: var(--button-active); color: var(--button-active-text); border-color: var(--button-active);
+}
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+.tile { padding: 14px 16px; }
+.tile .label { color: var(--text-secondary); font-size: 13px; }
+.tile .value { font-size: 28px; font-weight: 600; margin-top: 2px; }
+.tile .value small { font-size: 15px; font-weight: 500; color: var(--text-secondary); margin-left: 3px; }
+.tile .note { color: var(--text-muted); font-size: 13px; }
+.card { padding: 18px 16px 10px; position: relative; margin-bottom: 16px; }
+.card h3 { font-size: 16px; font-weight: 600; margin: 0 0 2px; }
+.card .hint { color: var(--text-muted); font-size: 13px; margin: 0 0 8px; }
+.chart { display: block; width: 100%; height: 300px; outline: none; touch-action: pan-y; }
+.chart.short { height: 240px; }
+.chart text { font-size: 12px; fill: var(--text-muted); font-variant-numeric: tabular-nums; }
+.chart text.cap { fill: var(--text-secondary); }
+.chart .bar { fill: var(--series); }
+.chart .bar.active { fill: var(--series-hover); }
+.tooltip {
+  position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 13px; white-space: nowrap; opacity: 0; transition: opacity 0.1s;
+}
+.tooltip .v { font-size: 18px; font-weight: 600; }
+.tooltip .s { color: var(--text-secondary); }
+details { margin: 0 0 8px; }
+summary { cursor: pointer; color: var(--text-secondary); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+details table { max-width: 520px; margin-top: 10px; }
+th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child, .runs td:nth-child(2), .runs th:nth-child(2) { text-align: left; }
+th { color: var(--text-secondary); font-weight: 500; font-size: 13px; }
+.runs { margin-top: 4px; }
+.runs tbody tr:hover { background: var(--row-hover); }
+.runs a { color: var(--link); text-decoration: none; font-weight: 500; }
+.runs a:hover { text-decoration: underline; }
+.runs .muted { color: var(--text-muted); }
+.runs td { white-space: nowrap; }
+.runs td.shoe { max-width: 160px; overflow: hidden; text-overflow: ellipsis; text-align: left; color: var(--text-secondary); }
+.runs th:last-child { text-align: left; }
+@media (max-width: 560px) {
+  .runs .hide-narrow { display: none; }
+  .runs td:nth-child(2) { white-space: normal; }
+  th, td { padding: 7px 6px; }
+}
+footer { color: var(--text-muted); font-size: 13px; margin-top: 32px; }
+.nav { color: var(--link); text-decoration: none; font-weight: 500; }
+.nav:hover { text-decoration: underline; }
+.runs-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.runs-bar .count { color: var(--text-secondary); font-size: 14px; }
+.runs-bar label { color: var(--text-secondary); font-size: 14px; }
+select {
+  font: inherit; font-size: 14px; padding: 5px 10px; border-radius: 8px; margin-left: 6px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-primary);
+}
+.pager { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; justify-content: center; margin-top: 14px; }
+.pager button { min-width: 38px; padding: 6px 10px; }
+.pager button[aria-current="page"] {
+  background: var(--button-active); color: var(--button-active-text); border-color: var(--button-active);
+}
+.pager button:disabled { opacity: 0.4; cursor: default; border-color: var(--border); }
+.pager .gap { color: var(--text-muted); padding: 0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Running</h1>
+  <p class="sub"><a class="nav" href="/explorer">Explorer tiles map →</a> &nbsp;·&nbsp; <a class="nav" href="/heatmap">Heatmap →</a> &nbsp;·&nbsp; <a class="nav" href="/shoes">Shoes →</a></p>
+
+  <section id="week">
+    <h2>Weekly mileage</h2>
+    <p class="sub"></p>
+    <div class="filters" role="group" aria-label="Time range for weekly mileage"></div>
+    <div class="tiles"></div>
+    <div class="card">
+      <h3>Miles per week</h3>
+      <p class="hint">Weeks run Monday to Sunday. Hover a bar, or click the chart and use the arrow keys.</p>
+      <svg class="chart" role="img" aria-label="Column chart of miles per week" tabindex="0"></svg>
+      <div class="tooltip" role="status"></div>
+    </div>
+    <details>
+      <summary>Show weeks as table</summary>
+      <table>
+        <thead><tr><th>Week of</th><th>Miles</th><th>Runs</th><th>Time</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </section>
+
+  <section id="month">
+    <h2>Monthly mileage</h2>
+    <p class="sub"></p>
+    <div class="filters" role="group" aria-label="Time range for monthly mileage"></div>
+    <div class="tiles"></div>
+    <div class="card">
+      <h3>Miles per month</h3>
+      <p class="hint">The current month is still in progress. Hover a bar, or click the chart and use the arrow keys.</p>
+      <svg class="chart" role="img" aria-label="Column chart of miles per month" tabindex="0"></svg>
+      <div class="tooltip" role="status"></div>
+    </div>
+    <details>
+      <summary>Show months as table</summary>
+      <table>
+        <thead><tr><th>Month</th><th>Miles</th><th>Runs</th><th>Time</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </section>
+
+  <section id="year">
+    <h2>Yearly mileage</h2>
+    <p class="sub"></p>
+    <div class="filters" role="group" aria-label="Time range for yearly mileage"></div>
+    <div class="tiles"></div>
+    <div class="card">
+      <h3>Miles per year</h3>
+      <p class="hint">The current year is still in progress. Hover a bar for runs and time.</p>
+      <svg class="chart short" role="img" aria-label="Column chart of miles per year" tabindex="0"></svg>
+      <div class="tooltip" role="status"></div>
+    </div>
+    <details>
+      <summary>Show years as table</summary>
+      <table>
+        <thead><tr><th>Year</th><th>Miles</th><th>Runs</th><th>Time</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </section>
+
+  <section id="runs">
+    <h2>Runs</h2>
+    <p class="sub">Newest first. Click a run to open its map.</p>
+    <div class="card">
+      <div class="runs-bar">
+        <span class="count" id="run-count" aria-live="polite"></span>
+        <label>Jump to <select id="jump"></select></label>
+      </div>
+      <table class="runs">
+        <thead><tr>
+          <th>Date</th><th>Run</th><th>Distance</th><th class="hide-narrow">Time</th><th>Pace</th><th class="hide-narrow">Shoe</th>
+        </tr></thead>
+        <tbody id="run-rows"></tbody>
+      </table>
+      <nav class="pager" id="pager" aria-label="Pages of runs"></nav>
+    </div>
+  </section>
+
+  <footer id="footer"></footer>
+</main>
+
+<script>
+const DATA = /*DATA*/null;
+const RUNS = DATA.runs.map(r => ({ ...r, day: new Date(r.date + "T00:00:00") }));
+const NS = "http://www.w3.org/2000/svg";
+const DAY = 864e5;
+
+// ---------- formatting ----------
+const fmtDate = (d, year = true) =>
+  d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(year && { year: "numeric" }) });
+const fmtMonth = d => d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+const fmtShortMonth = d => d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+const fmtMiles = m => m.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtWhole = m => Math.round(m).toLocaleString("en-US");
+const fmtTime = s => { const m = Math.round(s / 60); return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`; };
+const fmtPace = (s, mi) => { if (!mi) return "–"; const p = Math.round(s / mi); return `${Math.floor(p / 60)}:${String(p % 60).padStart(2, "0")} /mi`; };
+const plural = (n, word) => `${n.toLocaleString("en-US")} ${word}${n === 1 ? "" : "s"}`;
+
+// ---------- grouping ----------
+function group(keyOf, startOf, next) {
+  const totals = new Map();
+  for (const r of RUNS) {
+    const k = keyOf(r.day);
+    const t = totals.get(k) || { miles: 0, runs: 0, seconds: 0 };
+    t.miles += r.miles; t.runs += 1; t.seconds += r.seconds;
+    totals.set(k, t);
+  }
+  // one row per period from the first run to today, empty periods included
+  const rows = [], today = new Date();
+  for (let d = startOf(RUNS[0].day); d <= today; d = next(d)) {
+    rows.push({ date: d, ...(totals.get(keyOf(d)) || { miles: 0, runs: 0, seconds: 0 }) });
+  }
+  return rows;
+}
+const monday = d => new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7);
+const WEEKS = group(d => +monday(d), monday, d => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7));
+const MONTHS = group(d => d.getFullYear() * 12 + d.getMonth(), d => new Date(d.getFullYear(), d.getMonth(), 1),
+                     d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+const YEARS = group(d => d.getFullYear(), d => new Date(d.getFullYear(), 0, 1), d => new Date(d.getFullYear() + 1, 0, 1));
+
+// ---------- DOM helpers ----------
+function el(tag, attrs, parent) {
+  const node = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  parent.appendChild(node);
+  return node;
+}
+function html(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+function niceStep(max, ticks) {
+  const raw = max / ticks, mag = 10 ** Math.floor(Math.log10(raw));
+  return [1, 2, 2.5, 5, 10].map(s => s * mag).find(s => s >= raw);
+}
+const summaryLine = d => d.runs ? `${plural(d.runs, "run")} · ${fmtTime(d.seconds)}` : "No runs";
+const sum = (rows, key) => rows.reduce((s, r) => s + r[key], 0);
+function load(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : +v; } catch (e) { return fallback; } }
+function save(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+
+// ---------- column chart ----------
+// opts: tick(d, i, prev, data) -> axis label or null, title(d) -> tooltip heading, capLabels: value on each bar
+function columnChart(svg, opts) {
+  const tooltip = svg.nextElementSibling;
+  const chart = { items: [], active: -1 };
+  const m = { top: opts.capLabels ? 22 : 12, right: 8, bottom: 26, left: 44 };
+
+  chart.render = items => {
+    if (items) chart.items = items;
+    const data = chart.items;
+    svg.replaceChildren();
+    const width = svg.clientWidth, height = svg.clientHeight;
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    const w = width - m.left - m.right, h = height - m.top - m.bottom;
+    const max = Math.max(...data.map(d => d.miles), 1);
+    const step = niceStep(max, 5), top = Math.ceil(max / step) * step;
+    const y = v => m.top + h - (v / top) * h;
+    const band = w / data.length;
+    chart.band = band;
+
+    for (let v = 0; v <= top + 1e-9; v += step) {
+      if (v > 0) el("line", { x1: m.left, x2: width - m.right, y1: y(v), y2: y(v), stroke: "var(--grid)" }, svg);
+      el("text", { x: m.left - 8, y: y(v) + 4, "text-anchor": "end" }, svg).textContent =
+        v >= 1000 ? `${+(v / 1000).toFixed(1)}K` : +v.toFixed(1);
+    }
+
+    let lastX = -Infinity;
+    data.forEach((d, i) => {
+      const label = opts.tick(d, i, data[i - 1], data);
+      const x = m.left + i * band + (opts.centerTicks ? band / 2 : 0);
+      if (!label || x < lastX) return;
+      const text = el("text", { x, y: height - 8, "text-anchor": opts.centerTicks ? "middle" : "start" }, svg);
+      text.textContent = label;
+      const len = text.getComputedTextLength();
+      if ((opts.centerTicks ? x + len / 2 : x + len) > width) { text.remove(); return; }
+      lastX = x + (opts.centerTicks ? len / 2 : len) + 12;  // keep the next label clear of this one
+    });
+
+    const gap = Math.min(2, band * 0.3), barW = Math.min(opts.maxBar || 24, band - gap);
+    data.forEach((d, i) => {
+      const x = m.left + i * band + (band - barW) / 2;
+      const t = y(d.miles), bh = m.top + h - t;
+      el("rect", { x: m.left + i * band, y: m.top, width: band, height: h, fill: "transparent", "data-i": i }, svg);
+      if (bh > 0) {
+        const r = Math.min(4, barW / 2, bh);
+        el("path", { class: "bar" + (i === chart.active ? " active" : ""), "data-i": i, "pointer-events": "none",
+          d: `M${x},${t + bh}V${t + r}Q${x},${t} ${x + r},${t}H${x + barW - r}Q${x + barW},${t} ${x + barW},${t + r}V${t + bh}Z` }, svg);
+      }
+      if (opts.capLabels && d.miles > 0) {
+        const cap = el("text", { x: x + barW / 2, y: t - 6, "text-anchor": "middle", class: "cap", "pointer-events": "none" }, svg);
+        cap.textContent = fmtWhole(d.miles);
+        if (cap.getComputedTextLength() > band - 4) cap.remove();  // too narrow: the tooltip and table carry it
+      }
+    });
+    el("line", { x1: m.left, x2: width - m.right, y1: m.top + h, y2: m.top + h, stroke: "var(--baseline)" }, svg);
+  };
+
+  chart.show = i => {
+    chart.active = i;
+    svg.querySelectorAll(".bar.active").forEach(b => b.classList.remove("active"));
+    svg.querySelector(`.bar[data-i="${i}"]`)?.classList.add("active");
+    const d = chart.items[i];
+    tooltip.replaceChildren(
+      html("div", { className: "s", textContent: opts.title(d) }),
+      html("div", { className: "v", textContent: `${fmtMiles(d.miles)} mi` }),
+      html("div", { className: "s", textContent: summaryLine(d) }),
+    );
+    const cx = svg.offsetLeft + m.left + (i + 0.5) * chart.band;
+    const tw = tooltip.offsetWidth, card = svg.parentElement.clientWidth;
+    tooltip.style.left = Math.max(8, Math.min(cx - tw / 2, card - tw - 8)) + "px";
+    tooltip.style.top = svg.offsetTop + 4 + "px";
+    tooltip.style.opacity = 1;
+  };
+
+  chart.hide = () => {
+    chart.active = -1;
+    tooltip.style.opacity = 0;
+    svg.querySelectorAll(".bar.active").forEach(b => b.classList.remove("active"));
+  };
+
+  // Mouse: hover shows a bar's details. Touch: tap a bar (or slide sideways across bars) and the
+  // details stay until you tap outside the chart, since lifting a finger counts as "leaving" it.
+  const showAt = e => { const i = e.target.dataset?.i; if (i !== undefined) chart.show(+i); };
+  svg.addEventListener("pointermove", showAt);
+  svg.addEventListener("pointerdown", showAt);
+  svg.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") chart.hide(); });
+  document.addEventListener("pointerdown", e => { if (!svg.contains(e.target)) chart.hide(); });
+  svg.addEventListener("blur", chart.hide);
+  svg.addEventListener("keydown", e => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const last = chart.items.length - 1, a = chart.active;
+    chart.show(e.key === "Home" ? 0 : e.key === "End" ? last
+      : a < 0 ? last : Math.max(0, Math.min(last, a + (e.key === "ArrowRight" ? 1 : -1))));
+  });
+  return chart;
+}
+
+// axis labels: month names (with the year at January), or just years for long spans
+const shortMonth = d => d.toLocaleDateString("en-US", { month: "short" });
+function timeTick(yearsAfter) {
+  return (d, i, prev, data) => {
+    if (data.length > yearsAfter) return !prev || d.date.getFullYear() !== prev.date.getFullYear() ? String(d.date.getFullYear()) : null;
+    if (prev && d.date.getMonth() === prev.date.getMonth()) return null;
+    return d.date.getMonth() === 0 || i === 0 ? `${shortMonth(d.date)} ’${String(d.date.getFullYear()).slice(2)}` : shortMonth(d.date);
+  };
+}
+
+function tile(label, value, unit, note) {
+  const v = html("div", { className: "value", textContent: value }, html("small", { textContent: unit }));
+  return html("div", { className: "tile" },
+    html("div", { className: "label", textContent: label }), v, html("div", { className: "note", textContent: note }));
+}
+
+// ---------- weekly, monthly and yearly sections ----------
+// Each has its own time-range buttons scoping its tiles, chart and table.
+const SECTIONS = [
+  { id: "week", rows: WEEKS, unit: "week", store: "range", initial: 52,
+    ranges: [[12, "12 weeks"], [26, "6 months"], [52, "1 year"], [156, "3 years"], [0, "All time"]],
+    label: d => fmtDate(d.date), rangeLabel: (a, b) => `${fmtDate(a.date)} – ${fmtDate(new Date(+b.date + 6 * DAY))}`,
+    since: d => fmtDate(d.date, false), recent: [4, "4-week average", "the 4 full weeks before this one"],
+    chart: { tick: timeTick(120), title: d => `Week of ${fmtDate(d.date)}` } },
+  { id: "month", rows: MONTHS, unit: "month", store: "monthRange", initial: 24,
+    ranges: [[12, "1 year"], [24, "2 years"], [60, "5 years"], [0, "All time"]],
+    label: d => fmtMonth(d.date), rangeLabel: (a, b) => `${fmtShortMonth(a.date)} – ${fmtShortMonth(b.date)}`,
+    since: d => fmtDate(d.date, false), recent: [3, "3-month average", "the 3 full months before this one"],
+    chart: { tick: timeTick(36), title: d => fmtMonth(d.date) } },
+  { id: "year", rows: YEARS, unit: "year", store: "yearRange", initial: 0,
+    ranges: [[3, "3 years"], [5, "5 years"], [0, "All time"]],
+    label: d => String(d.date.getFullYear()), rangeLabel: (a, b) => `${a.date.getFullYear()} – ${b.date.getFullYear()}`,
+    since: d => fmtDate(d.date, false), recent: [1, "Last year", "the full year before this one"],
+    chart: { tick: d => String(d.date.getFullYear()), title: d => String(d.date.getFullYear()),
+             capLabels: true, centerTicks: true, maxBar: 40 } },
+];
+
+for (const s of SECTIONS) {
+  const root = document.getElementById(s.id);
+  s.range = load(s.store, s.initial);
+  if (!s.ranges.some(([n]) => n === s.range)) s.range = s.initial;
+  s.chartObj = columnChart(root.querySelector("svg"), s.chart);
+  const filters = root.querySelector(".filters");
+  for (const [n, text] of s.ranges) {
+    const b = html("button", { textContent: text });
+    b.addEventListener("click", () => { s.range = n; save(s.store, n); renderSection(s); });
+    filters.append(b);
+  }
+  s.buttons = [...filters.children];
+}
+
+function renderSection(s) {
+  const root = document.getElementById(s.id), rows = s.rows;
+  const shown = s.range > 0 ? rows.slice(-s.range) : rows;
+  s.buttons.forEach((b, i) => b.setAttribute("aria-pressed", s.ranges[i][0] === s.range));
+  root.querySelector(".sub").textContent = s.rangeLabel(shown[0], shown[shown.length - 1]);
+
+  const now = rows[rows.length - 1];
+  const [n, recentLabel, recentNote] = s.recent;
+  const before = rows.slice(-n - 1, -1);
+  const recent = sum(before, "miles") / Math.max(before.length, 1);
+  const best = shown.reduce((b, d) => (d.miles > b.miles ? d : b), shown[0]);
+  const big = s.unit === "year";  // yearly totals read better as whole miles
+  const fmt = big ? fmtWhole : fmtMiles;
+  root.querySelector(".tiles").replaceChildren(
+    tile(`This ${s.unit}`, fmt(now.miles), "mi", `${plural(now.runs, "run")} since ${s.since(now)}`),
+    tile(recentLabel, fmt(recent), "mi", before.length ? recentNote : "no earlier data"),
+    tile(`Best ${s.unit} in range`, fmt(best.miles), "mi", s.unit === "week" ? `week of ${s.label(best)}` : s.label(best)),
+    tile("Total in range", fmtWhole(sum(shown, "miles")), "mi",
+         `${plural(sum(shown, "runs"), "run")} over ${plural(shown.length, s.unit)}`),
+  );
+
+  s.chartObj.hide();
+  s.chartObj.render(shown);
+  root.querySelector("tbody").replaceChildren(...[...shown].reverse().map(d => html("tr", {},
+    html("td", { textContent: s.label(d) }), html("td", { textContent: fmtMiles(d.miles) }),
+    html("td", { textContent: d.runs }), html("td", { textContent: d.runs ? fmtTime(d.seconds) : "–" }))));
+}
+
+// ---------- runs list, in pages ----------
+const PAGE_SIZE = 50;
+const SHOE_NAMES = Object.fromEntries(DATA.shoes.shoes.map(s => [s.id, s.name]));
+const SHOE_OF = DATA.shoes.runs;  // run file -> shoe id
+// Coming back from a run's page (where the shoe may have changed): Safari can show the old copy
+// of this page from memory, so reload it; the page and scroll position come back with it.
+window.addEventListener("pageshow", e => { if (e.persisted) location.reload(); });
+const NEWEST = [...RUNS].reverse();
+const PAGES = Math.ceil(NEWEST.length / PAGE_SIZE);
+// "#runs-N" in the address remembers the page of runs, so coming back from a run's map lands there
+let page = Math.max(0, Math.min(PAGES - 1, (+(location.hash.match(/^#runs-(\d+)$/) || [])[1] || 1) - 1));
+
+function renderRuns(scroll, keepJump) {
+  const body = document.getElementById("run-rows");
+  const first = page * PAGE_SIZE, slice = NEWEST.slice(first, first + PAGE_SIZE);
+  body.replaceChildren(...slice.map(r => {
+    const [hh, mm] = r.time.split(":").map(Number);
+    const weekday = r.day.toLocaleDateString("en-US", { weekday: "short" });
+    const clock = new Date(2000, 0, 1, hh, mm).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    const link = html("a", { href: `/run?f=${encodeURIComponent(r.file)}`, textContent: r.name,
+                             title: `${weekday} ${fmtDate(r.day)}, ${clock}` });
+    return html("tr", {},
+      html("td", {}, html("span", { className: "hide-narrow", textContent: `${weekday}, ` }), fmtDate(r.day)),
+      html("td", {}, link, html("span", { className: "muted hide-narrow", textContent: ` · ${clock}` })),
+      html("td", { textContent: `${fmtMiles(r.miles)} mi` }),
+      html("td", { className: "hide-narrow", textContent: fmtTime(r.seconds) }),
+      html("td", { textContent: fmtPace(r.seconds, r.miles) }),
+      html("td", { className: "hide-narrow shoe", textContent: SHOE_NAMES[SHOE_OF[r.file]] || "–" }));
+  }));
+  const newest = slice[0], oldest = slice[slice.length - 1];
+  document.getElementById("run-count").textContent =
+    `Runs ${(first + 1).toLocaleString("en-US")}–${(first + slice.length).toLocaleString("en-US")} of ` +
+    `${NEWEST.length.toLocaleString("en-US")} · ${fmtDate(oldest.day)} to ${fmtDate(newest.day)}`;
+  if (!keepJump) document.getElementById("jump").value = newest.date.slice(0, 7);
+  renderPager();
+  if (location.hash.startsWith("#runs-")) history.replaceState(null, "", `#runs-${page + 1}`);
+  if (scroll) document.getElementById("runs").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderPager() {
+  const pager = document.getElementById("pager");
+  const go = (p, text, label) => {
+    const b = html("button", { textContent: text, disabled: p < 0 || p >= PAGES || (p === page && !/^\d+$/.test(text)) });
+    if (label) b.setAttribute("aria-label", label);
+    if (p === page && /^\d+$/.test(text)) b.setAttribute("aria-current", "page");
+    b.addEventListener("click", () => { page = p; renderRuns(true); });
+    return b;
+  };
+  // first, last and the pages around the current one; gaps elsewhere
+  const wanted = new Set([0, PAGES - 1]);
+  for (let p = page - 2; p <= page + 2; p++) if (p >= 0 && p < PAGES) wanted.add(p);
+  const items = [go(0, "« Newest", "Newest runs"), go(page - 1, "‹", "Newer runs")];
+  let prev = -1;
+  for (const p of [...wanted].sort((a, b) => a - b)) {
+    if (p - prev > 1) items.push(html("span", { className: "gap", textContent: "…" }));
+    items.push(go(p, String(p + 1), `Page ${p + 1}`));
+    prev = p;
+  }
+  items.push(go(page + 1, "›", "Older runs"), go(PAGES - 1, "Oldest »", "Oldest runs"));
+  pager.replaceChildren(...items);
+}
+
+// "Jump to" lists every month with runs, newest first, and opens the page holding that month's latest run
+const jump = document.getElementById("jump");
+let lastYear = null, optgroup = null;
+NEWEST.forEach((r, i) => {
+  const ym = r.date.slice(0, 7);
+  if (optgroup && optgroup.lastChild?.value === ym) return;
+  if (r.date.slice(0, 4) !== lastYear) {
+    lastYear = r.date.slice(0, 4);
+    optgroup = html("optgroup", { label: lastYear });
+    jump.append(optgroup);
+  }
+  optgroup.append(html("option", { value: ym, textContent: fmtShortMonth(r.day) }));
+  optgroup.lastChild.dataset.index = i;
+});
+jump.addEventListener("change", () => {
+  page = Math.floor(+jump.selectedOptions[0].dataset.index / PAGE_SIZE);
+  renderRuns(false, true);  // the page may start in a newer month; keep the chosen one selected
+});
+
+// ---------- start ----------
+document.getElementById("footer").textContent =
+  `${plural(RUNS.length, "run")} from COROS/, HealthFit/ and garmin/. Reload the page to pick up newly synced runs.`;
+if (DATA.phone) document.getElementById("footer").append(html("br"), `On your phone (with Tailscale on): ${DATA.phone}`);
+SECTIONS.forEach(renderSection);
+renderRuns(false);
+// Leaving for a run's map: remember the page and scroll position for the way back
+document.getElementById("run-rows").addEventListener("click", e => {
+  if (!e.target.closest("a")) return;
+  history.replaceState(null, "", `#runs-${page + 1}`);
+  try { sessionStorage.setItem("dashboardScroll", String(scrollY)); } catch (err) {}
+});
+if (location.hash.startsWith("#runs-")) {
+  let y = null;
+  try { y = sessionStorage.getItem("dashboardScroll"); } catch (err) {}
+  if (y !== null) scrollTo(0, +y); else document.getElementById("runs").scrollIntoView();
+}
+window.addEventListener("resize", () => SECTIONS.forEach(s => s.chartObj.render()));
+</script>
+</body>
+</html>

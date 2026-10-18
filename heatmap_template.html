@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running Heatmap</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --border: rgba(11, 11, 11, 0.10);
+  --link: #256abf;
+  --button-active: #0b0b0b;
+  --button-active-text: #fcfcfb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --border: rgba(255, 255, 255, 0.10);
+    --link: #6da7ec;
+    --button-active: #f0efec;
+    --button-active-text: #1a1a19;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --border: rgba(255, 255, 255, 0.10);
+  --link: #6da7ec;
+  --button-active: #f0efec;
+  --button-active-text: #1a1a19;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 40px; }
+.nav { display: flex; justify-content: space-between; gap: 12px; }
+.nav a { color: var(--link); text-decoration: none; font-size: 14px; }
+.nav a:hover { text-decoration: underline; }
+h1 { font-size: 28px; font-weight: 650; margin: 8px 0 4px; }
+.sub { color: var(--text-secondary); margin: 0 0 16px; }
+.controls { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+button {
+  font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-primary);
+}
+button:hover { border-color: var(--text-muted); }
+button[aria-pressed="true"] { background: var(--button-active); color: var(--button-active-text); border-color: var(--button-active); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+.tile .label { color: var(--text-secondary); font-size: 13px; }
+.tile .value { font-size: 28px; font-weight: 600; margin-top: 2px; }
+.tile .value small { font-size: 15px; font-weight: 500; color: var(--text-secondary); margin-left: 3px; }
+.tile .note { color: var(--text-muted); font-size: 13px; }
+#map { height: min(72vh, 680px); border-radius: 14px; border: 1px solid var(--border); background: var(--surface); }
+.leaflet-container { font: inherit; }
+.leaflet-bar a, .leaflet-control-layers { background: var(--surface); color: var(--text-primary); border-color: var(--border); }
+.leaflet-control-layers-list { color: var(--text-primary); }
+.leaflet-control-attribution { background: color-mix(in srgb, var(--surface) 80%, transparent) !important; color: var(--text-secondary); }
+.leaflet-control-attribution a { color: var(--text-secondary); }
+.leaflet-control-scale-line { background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--text-primary); border-color: var(--text-secondary); }
+.legend { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--text-muted); font-size: 13px; }
+.legend .ramp { width: 140px; height: 10px; border-radius: 5px; }
+.map-actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="nav"><a href="/">← Dashboard</a><a href="/explorer">Explorer tiles →</a></div>
+  <h1>Heatmap</h1>
+  <p class="sub">Every route you've run on one map. The more often you've run a road, the hotter it glows.</p>
+
+  <div class="controls" role="group" aria-label="Which runs to draw" id="filters"></div>
+  <div class="tiles" id="stats"></div>
+  <div id="map" role="region" aria-label="Heatmap of your running routes"></div>
+  <div class="legend"><span>Ran once</span><span class="ramp" id="ramp"></span><span>Ran 50+ times</span></div>
+  <div class="map-actions">
+    <button id="to-home">Show where I run most</button>
+    <button id="to-all">Show every run</button>
+  </div>
+</main>
+
+<script>
+const DATA = /*DATA*/null;
+const isDark = () => matchMedia("(prefers-color-scheme: dark)").matches;
+const plural = (v, w) => `${v.toLocaleString("en-US")} ${w}${v === 1 ? "" : "s"}`;
+
+// ---- decode routes into Web Mercator coordinates (0..1), the space map tiles are cut from
+const toX = lon => (lon + 180) / 360;
+const toY = lat => (1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2;
+const RUNS = DATA.runs.map(r => {
+  let minX = 1, minY = 1, maxX = 0, maxY = 0;
+  const pieces = r.s.map(flat => {
+    const xy = new Float64Array(flat.length);
+    let lat = 0, lon = 0;
+    for (let i = 0; i < flat.length; i += 2) {
+      lat += flat[i]; lon += flat[i + 1];
+      const x = toX(lon / 1e5), y = toY(lat / 1e5);
+      xy[i] = x; xy[i + 1] = y;
+      if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    return xy;
+  });
+  return { date: r.d, year: +r.d.slice(0, 4), miles: r.m, pieces, box: [minX, minY, maxX, maxY] };
+});
+
+// ---- which runs: all, last 12 months, or one year
+const years = [...new Set(RUNS.map(r => r.year))].sort((a, b) => b - a);
+const yearAgo = new Date(); yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+const lastYearStart = yearAgo.toISOString().slice(0, 10);
+const FILTERS = [["all", "All time"], ["12m", "Last 12 months"], ...years.map(y => [String(y), String(y)])];
+let filter = "all";
+try { const f = localStorage.getItem("heatFilter"); if (FILTERS.some(([k]) => k === f)) filter = f; } catch (e) {}
+let shown = [];
+const pick = () => filter === "all" ? RUNS : filter === "12m" ? RUNS.filter(r => r.date >= lastYearStart)
+  : RUNS.filter(r => r.year === +filter);
+
+// ---- map and background choices (same as the other maps)
+const map = L.map("map", { zoomSnap: 0.25, minZoom: 3 });
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+const shade = isDark() ? "Dark" : "Light";
+const baseLayers = {
+  Map: L.layerGroup([
+    L.tileLayer(`${ESRI}/Canvas/World_${shade}_Gray_Base/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 16,
+      attribution: "Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors" }),
+    L.tileLayer(`${ESRI}/Canvas/World_${shade}_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 16 }),
+  ]),
+  Streets: L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }),
+  Satellite: L.tileLayer(`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19,
+    attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics" }),
+};
+let baseName = "Map";
+try { const b = localStorage.getItem("heatBase"); if (baseLayers[b]) baseName = b; } catch (e) {}
+baseLayers[baseName].addTo(map);
+L.control.layers(baseLayers, null, { position: "topright" }).addTo(map);
+L.control.scale({ position: "bottomleft" }).addTo(map);
+
+// ---- color: how many runs covered a pixel, on a log scale so quiet streets still show
+const SATURATE = 50;  // runs at which a road reaches the hottest color
+// on dark backgrounds hotter = brighter; on light ones hotter = deeper red
+const RAMPS = {
+  dark: [[217, 89, 38], [247, 165, 65], [255, 243, 196]],
+  light: [[244, 165, 130], [214, 96, 77], [140, 26, 16]],
+};
+const rampName = () => (baseName === "Map" && isDark()) || baseName === "Satellite" ? "dark" : "light";
+function rampColor(t, stops) {
+  const s = t * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(s)), f = s - i;
+  return stops[i].map((c, k) => Math.round(c + (stops[i + 1][k] - c) * f));
+}
+const LUT = {};  // run count (0-255) -> [r, g, b, a] for each ramp
+for (const name in RAMPS) {
+  LUT[name] = [];
+  for (let n = 0; n < 256; n++) {
+    const t = Math.min(1, Math.log1p(n) / Math.log1p(SATURATE));
+    LUT[name].push([...rampColor(t, RAMPS[name]), n ? Math.round(255 * (0.55 + 0.45 * t)) : 0]);
+  }
+}
+function paintLegend() {
+  const stops = RAMPS[rampName()].map(c => `rgb(${c})`).join(", ");
+  document.getElementById("ramp").style.background = `linear-gradient(to right, ${stops})`;
+}
+
+// ---- heat layer: each run adds 1 to a pixel's red channel ("lighter" blending adds), then the
+// count is turned into a color. A run that crosses itself still counts once per pixel.
+map.createPane("heat").style.zIndex = 350;
+const Heat = L.GridLayer.extend({
+  createTile({ x, y, z }) {
+    const canvas = document.createElement("canvas"), px = this.getTileSize().x, dpr = window.devicePixelRatio || 1;
+    const size = px * dpr;
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const world = 2 ** z * size, ox = x * size, oy = y * size;
+    const pad = 4 / world;  // include routes just outside so line ends don't clip
+    const x0 = x / 2 ** z - pad, y0 = y / 2 ** z - pad, x1 = (x + 1) / 2 ** z + pad, y1 = (y + 1) / 2 ** z + pad;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = "rgb(1, 0, 0)";
+    ctx.lineWidth = (z <= 11 ? 1 : z <= 13 ? 1.5 : z <= 15 ? 2.2 : 3) * dpr;
+    ctx.lineJoin = ctx.lineCap = "round";
+    let drew = false;
+    for (const r of shown) {
+      const [bx0, by0, bx1, by1] = r.box;
+      if (bx1 < x0 || bx0 > x1 || by1 < y0 || by0 > y1) continue;
+      ctx.beginPath();
+      for (const xy of r.pieces) {
+        ctx.moveTo(xy[0] * world - ox, xy[1] * world - oy);
+        for (let i = 2; i < xy.length; i += 2) ctx.lineTo(xy[i] * world - ox, xy[i + 1] * world - oy);
+      }
+      ctx.stroke();
+      drew = true;
+    }
+    if (!drew) return canvas;
+    const img = ctx.getImageData(0, 0, size, size), d = img.data, lut = LUT[rampName()];
+    for (let i = 0; i < d.length; i += 4) {
+      const c = lut[d[i]];
+      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = c[3];
+    }
+    ctx.globalCompositeOperation = "copy";
+    ctx.putImageData(img, 0, 0);
+    return canvas;
+  },
+});
+const heat = new Heat({ pane: "heat", maxZoom: 19 }).addTo(map);
+map.on("baselayerchange", e => {
+  baseName = e.name;
+  try { localStorage.setItem("heatBase", e.name); } catch (err) {}
+  paintLegend();
+  heat.redraw();
+});
+
+// ---- where to look: the area you run most (median start point), or everything
+function homeView() {
+  const pts = shown.length ? shown : RUNS;
+  const xs = pts.map(r => r.pieces[0][0]).sort((a, b) => a - b), ys = pts.map(r => r.pieces[0][1]).sort((a, b) => a - b);
+  const mx = xs[xs.length >> 1], my = ys[ys.length >> 1];
+  const lon = mx * 360 - 180, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * my))) * 180 / Math.PI;
+  map.setView([lat, lon], 12.5);
+}
+function allView() {
+  const pts = shown.length ? shown : RUNS;
+  const fromXY = (x, y) => [Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180 / Math.PI, x * 360 - 180];
+  const minX = Math.min(...pts.map(r => r.box[0])), minY = Math.min(...pts.map(r => r.box[1]));
+  const maxX = Math.max(...pts.map(r => r.box[2])), maxY = Math.max(...pts.map(r => r.box[3]));
+  map.fitBounds([fromXY(minX, maxY), fromXY(maxX, minY)], { padding: [20, 20] });
+}
+
+function stat(label, value, unit, note) {
+  const div = document.createElement("div");
+  div.className = "tile";
+  const v = Object.assign(document.createElement("div"), { className: "value", textContent: value });
+  if (unit) v.append(Object.assign(document.createElement("small"), { textContent: unit }));
+  div.append(Object.assign(document.createElement("div"), { className: "label", textContent: label }), v,
+             Object.assign(document.createElement("div"), { className: "note", textContent: note }));
+  return div;
+}
+
+function render() {
+  shown = pick();
+  document.querySelectorAll("#filters button").forEach(b => b.setAttribute("aria-pressed", b.dataset.f === filter));
+  const label = FILTERS.find(([k]) => k === filter)[1];
+  const miles = shown.reduce((s, r) => s + r.miles, 0);
+  const first = shown[0], last = shown[shown.length - 1];
+  document.getElementById("stats").replaceChildren(
+    stat("Runs drawn", shown.length.toLocaleString("en-US"), "", filter === "all" ? "every run with GPS" : label),
+    stat("Miles drawn", Math.round(miles).toLocaleString("en-US"), "mi",
+         shown.length ? `${first.date.slice(0, 7)} to ${last.date.slice(0, 7)}` : "no runs"),
+  );
+  heat.redraw();
+}
+
+const filters = document.getElementById("filters");
+for (const [key, text] of FILTERS) {
+  const b = Object.assign(document.createElement("button"), { textContent: text });
+  b.dataset.f = key;
+  b.addEventListener("click", () => {
+    filter = key;
+    try { localStorage.setItem("heatFilter", key); } catch (e) {}
+    render();
+  });
+  filters.append(b);
+}
+document.getElementById("to-home").addEventListener("click", homeView);
+document.getElementById("to-all").addEventListener("click", allView);
+paintLegend();
+render();
+homeView();
+</script>
+</body>
+</html>

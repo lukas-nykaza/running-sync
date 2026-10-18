@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explorer Tiles</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --border: rgba(11, 11, 11, 0.10);
+  --visited: #2a78d6;
+  --square: #eb6834;
+  --link: #256abf;
+  --button-active: #0b0b0b;
+  --button-active-text: #fcfcfb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --border: rgba(255, 255, 255, 0.10);
+    --visited: #3987e5;
+    --square: #d95926;
+    --link: #6da7ec;
+    --button-active: #f0efec;
+    --button-active-text: #1a1a19;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --border: rgba(255, 255, 255, 0.10);
+  --visited: #3987e5;
+  --square: #d95926;
+  --link: #6da7ec;
+  --button-active: #f0efec;
+  --button-active-text: #1a1a19;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 40px; }
+.back { color: var(--link); text-decoration: none; font-size: 14px; }
+.back:hover { text-decoration: underline; }
+h1 { font-size: 28px; font-weight: 650; margin: 8px 0 4px; }
+.sub { color: var(--text-secondary); margin: 0 0 16px; }
+.controls { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.controls .spacer { flex: 1; }
+button {
+  font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-primary);
+}
+button:hover { border-color: var(--text-muted); }
+button[aria-pressed="true"] { background: var(--button-active); color: var(--button-active-text); border-color: var(--button-active); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+.tile .label { color: var(--text-secondary); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.tile .value { font-size: 28px; font-weight: 600; margin-top: 2px; }
+.tile .note { color: var(--text-muted); font-size: 13px; }
+.swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; }
+.swatch.visited { background: color-mix(in srgb, var(--visited) 45%, transparent); border: 1.5px solid var(--visited); }
+.swatch.square { background: color-mix(in srgb, var(--square) 65%, transparent); border: 1.5px solid var(--square); }
+#map { height: min(70vh, 640px); border-radius: 14px; border: 1px solid var(--border); background: var(--surface); }
+.leaflet-container { font: inherit; }
+.leaflet-bar a, .leaflet-control-layers { background: var(--surface); color: var(--text-primary); border-color: var(--border); }
+.leaflet-control-layers-list { color: var(--text-primary); }
+.leaflet-control-attribution { background: color-mix(in srgb, var(--surface) 80%, transparent) !important; color: var(--text-secondary); }
+.leaflet-control-attribution a { color: var(--text-secondary); }
+.leaflet-control-scale-line { background: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--text-primary); border-color: var(--text-secondary); }
+.note-below { color: var(--text-muted); font-size: 13px; margin-top: 12px; }
+:root { --row-hover: rgba(11, 11, 11, 0.04); --grid: #e1e0d9; --selected: #0b0b0b; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --row-hover: rgba(255, 255, 255, 0.05); --grid: #2c2c2a; --selected: #f0efec; }
+}
+:root[data-theme="dark"] { --row-hover: rgba(255, 255, 255, 0.05); --grid: #2c2c2a; --selected: #f0efec; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 16px 14px; margin-top: 16px; }
+.card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.card h2 { font-size: 18px; font-weight: 650; margin: 0 0 2px; }
+.card .count { color: var(--text-secondary); font-size: 14px; margin: 0 0 8px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child, td:nth-child(2), th:nth-child(2) { text-align: left; }
+th { color: var(--text-secondary); font-weight: 500; font-size: 13px; }
+tbody tr:hover { background: var(--row-hover); }
+.runs a { color: var(--link); text-decoration: none; font-weight: 500; }
+.runs a:hover { text-decoration: underline; }
+.muted { color: var(--text-muted); }
+.pager { display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 14px; color: var(--text-secondary); font-size: 14px; }
+.pager button:disabled { opacity: 0.4; cursor: default; }
+@media (max-width: 560px) {
+  .hide-narrow { display: none; }
+  td:nth-child(2) { white-space: normal; }
+  th, td { padding: 7px 6px; }
+}
+</style>
+</head>
+<body>
+<main>
+  <div style="display:flex;justify-content:space-between;gap:12px"><a class="back" href="/">← Dashboard</a><a class="back" href="/heatmap">Heatmap →</a></div>
+  <h1>Explorer tiles</h1>
+  <p class="sub" id="sub"></p>
+
+  <div class="controls">
+    <div role="group" aria-label="Tile size" id="zooms"></div>
+    <span class="spacer"></span>
+    <button id="to-square">Show biggest square</button>
+    <button id="to-all">Show all tiles</button>
+  </div>
+
+  <div class="tiles" id="stats"></div>
+  <div id="map" role="region" aria-label="Map of visited explorer tiles"></div>
+  <p class="note-below"><strong>Tap a tile to list the runs that went through it.</strong>
+    A tile counts once any run's GPS track enters it. The biggest square is the largest
+    block of tiles, the same number across and down, where every tile is visited.</p>
+
+  <div class="card" id="tile-card" hidden>
+    <div class="card-head">
+      <div>
+        <h2>Runs through this tile</h2>
+        <p class="count" id="tile-count" aria-live="polite"></p>
+      </div>
+      <button id="tile-clear">Close</button>
+    </div>
+    <table class="runs">
+      <thead><tr><th>Date</th><th>Run</th><th>Distance</th><th class="hide-narrow">Time</th><th>Pace</th></tr></thead>
+      <tbody id="tile-rows"></tbody>
+    </table>
+    <nav class="pager" id="tile-pager" aria-label="Pages of runs"></nav>
+  </div>
+</main>
+
+<script>
+const DATA = /*DATA*/null;
+const ZOOMS = [[14, "Large tiles (zoom 14)"], [17, "Small tiles (zoom 17)"]];
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const isDark = () => matchMedia("(prefers-color-scheme: dark)").matches;
+let zoom = 14;
+try { zoom = +(localStorage.getItem("explorerZoom") ?? 14); } catch (e) {}
+if (!DATA[zoom]) zoom = 14;
+
+// tile key = x * 2^z + y, as sent by explorer.py
+const layers = {};
+for (const [z] of ZOOMS) {
+  const n = 2 ** z, d = DATA[z];
+  layers[z] = { n, keys: new Set(d.tiles), xy: d.tiles.map(k => [Math.floor(k / n), k % n]), square: d.square };
+}
+const tileLat = (y, n) => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;
+const tileLon = (x, n) => x / n * 360 - 180;
+const boundsOf = (x0, y0, x1, y1, n) => L.latLngBounds([tileLat(y1, n), tileLon(x0, n)], [tileLat(y0, n), tileLon(x1, n)]);
+const plural = (v, w) => `${v.toLocaleString("en-US")} ${w}${v === 1 ? "" : "s"}`;
+
+// ---- map
+const map = L.map("map", { zoomSnap: 0.25 });
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+const shade = isDark() ? "Dark" : "Light";
+const baseLayers = {  // same choices as a run's map; switch with the stacked-squares button
+  Map: L.layerGroup([
+    L.tileLayer(`${ESRI}/Canvas/World_${shade}_Gray_Base/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 16,
+      attribution: "Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors" }),
+    L.tileLayer(`${ESRI}/Canvas/World_${shade}_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19, maxNativeZoom: 16 }),
+  ]),
+  Streets: L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }),
+  Satellite: L.tileLayer(`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, { maxZoom: 19,
+    attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics" }),
+};
+let baseName = "Streets";
+try { const b = localStorage.getItem("explorerBase"); if (baseLayers[b]) baseName = b; } catch (e) {}
+baseLayers[baseName].addTo(map);
+L.control.layers(baseLayers, null, { position: "topright" }).addTo(map);
+L.control.scale({ position: "bottomleft" }).addTo(map);
+map.on("baselayerchange", e => {
+  baseName = e.name;
+  try { localStorage.setItem("explorerBase", e.name); } catch (err) {}
+  grid.redraw();
+});
+// Streets and Satellite stay bright in dark mode, so tile shading follows the background, not the page
+const darkBase = () => baseName === "Map" && isDark();
+
+function drawTile(ctx, { x, y, z }, px, dpr) {
+  const E = layers[zoom], scale = 2 ** (zoom - z), s = px / scale;  // explorer tiles per map tile, px per explorer tile
+  const x0 = x * scale, y0 = y * scale;
+  const dev = v => Math.round(v * dpr);  // snap to device pixels so neighbouring fills don't seam
+  const sq = E.square;
+  const inSquare = (tx, ty) => tx >= sq.x && tx < sq.x + sq.n && ty >= sq.y && ty < sq.y + sq.n;
+  const fill = (tx, ty) => {
+    const l = dev((tx - x0) * s), t = dev((ty - y0) * s);
+    ctx.fillRect(l, t, Math.max(1, dev((tx + 1 - x0) * s) - l), Math.max(1, dev((ty + 1 - y0) * s) - t));
+  };
+  // tiles inside this map tile: check each cell when there are few, otherwise scan the visited list
+  const cells = [];
+  if (scale <= 1) {
+    const tx = Math.floor(x0), ty = Math.floor(y0);
+    if (E.keys.has(tx * E.n + ty)) cells.push([tx, ty]);
+  } else if (scale <= 64) {
+    for (let tx = x0; tx < x0 + scale; tx++) for (let ty = y0; ty < y0 + scale; ty++) if (E.keys.has(tx * E.n + ty)) cells.push([tx, ty]);
+  } else {
+    for (const [tx, ty] of E.xy) if (tx >= x0 && ty >= y0 && tx < x0 + scale && ty < y0 + scale) cells.push([tx, ty]);
+  }
+  ctx.fillStyle = css("--visited");
+  ctx.globalAlpha = baseName === "Satellite" ? 0.5 : darkBase() ? 0.42 : 0.34;
+  for (const [tx, ty] of cells) if (!inSquare(tx, ty)) fill(tx, ty);
+  ctx.fillStyle = css("--square");
+  ctx.globalAlpha = baseName === "Satellite" ? 0.65 : darkBase() ? 0.62 : 0.55;
+  for (const [tx, ty] of cells) if (inSquare(tx, ty)) fill(tx, ty);
+  ctx.globalAlpha = 1;
+
+  if (s >= 8) {  // grid lines between explorer tiles once they're big enough to see
+    const w = Math.max(1, Math.round(dpr)), off = w % 2 ? 0.5 : 0, end = px * dpr;
+    ctx.lineWidth = w;
+    ctx.strokeStyle = baseName === "Satellite" ? "rgba(255, 255, 255, 0.5)"
+      : darkBase() ? "rgba(255, 255, 255, 0.22)" : "rgba(11, 11, 11, 0.20)";
+    ctx.beginPath();
+    for (let i = Math.ceil(x0); i <= x0 + scale; i++) { const p = dev((i - x0) * s) + off; ctx.moveTo(p, 0); ctx.lineTo(p, end); }
+    for (let i = Math.ceil(y0); i <= y0 + scale; i++) { const p = dev((i - y0) * s) + off; ctx.moveTo(0, p); ctx.lineTo(end, p); }
+    ctx.stroke();
+  }
+  if (selected && selected.z === zoom) {  // outline the tapped tile
+    ctx.lineWidth = 3 * dpr;
+    ctx.strokeStyle = css("--selected");
+    ctx.strokeRect(dev((selected.x - x0) * s) + 1.5 * dpr, dev((selected.y - y0) * s) + 1.5 * dpr,
+                   Math.max(2, dev(s) - 3 * dpr), Math.max(2, dev(s) - 3 * dpr));
+  }
+  if (sq.n >= 1) {  // outline the biggest square
+    ctx.lineWidth = 2.5 * dpr;
+    ctx.strokeStyle = css("--square");
+    ctx.strokeRect(dev((sq.x - x0) * s), dev((sq.y - y0) * s), dev(sq.n * s), dev(sq.n * s));
+  }
+}
+
+const Grid = L.GridLayer.extend({
+  createTile(coords) {
+    const tile = document.createElement("canvas"), px = this.getTileSize().x, dpr = window.devicePixelRatio || 1;
+    tile.width = tile.height = px * dpr;
+    drawTile(tile.getContext("2d"), coords, px, dpr);
+    return tile;
+  },
+});
+map.createPane("explorer").style.zIndex = 350;  // above whichever background map is showing
+const grid = new Grid({ maxZoom: 19, pane: "explorer" }).addTo(map);
+
+// ---- stats and controls
+function squareBounds() {
+  const E = layers[zoom], sq = E.square;
+  return boundsOf(sq.x, sq.y, sq.x + sq.n, sq.y + sq.n, E.n);
+}
+function allBounds() {
+  const E = layers[zoom];
+  const xs = E.xy.map(t => t[0]), ys = E.xy.map(t => t[1]);
+  return boundsOf(Math.min(...xs), Math.min(...ys), Math.max(...xs) + 1, Math.max(...ys) + 1, E.n);
+}
+function tileMiles() {  // side length of one tile near the biggest square
+  const E = layers[zoom], lat = tileLat(E.square.y + E.square.n / 2, E.n);
+  return 24901.461 * Math.cos(lat * Math.PI / 180) / E.n;
+}
+function stat(label, value, note, swatch) {
+  const l = Object.assign(document.createElement("div"), { className: "label" });
+  if (swatch) l.append(Object.assign(document.createElement("span"), { className: `swatch ${swatch}` }));
+  l.append(label);
+  const div = Object.assign(document.createElement("div"), { className: "tile" });
+  div.append(l, Object.assign(document.createElement("div"), { className: "value", textContent: value }),
+             Object.assign(document.createElement("div"), { className: "note", textContent: note }));
+  return div;
+}
+
+function render(fit) {
+  const E = layers[zoom], side = tileMiles(), n = E.square.n;
+  const size = side >= 0.5 ? `${side.toFixed(1)} mi` : `${Math.round(side * 1760)} yd`;
+  document.getElementById("sub").textContent =
+    `Every map tile you've run through, from ${plural(DATA.runs, "run")} with GPS. Each tile is about ${size} across here.`;
+  document.getElementById("stats").replaceChildren(
+    stat("Tiles visited", E.xy.length.toLocaleString("en-US"), "your explorer score", "visited"),
+    stat("Biggest square", `${n}×${n}`, `${plural(n * n, "tile")}, about ${(n * side).toFixed(1)} mi on a side`, "square"),
+  );
+  document.querySelectorAll("#zooms button").forEach(b => b.setAttribute("aria-pressed", +b.dataset.z === zoom));
+  grid.redraw();
+  if (fit) map.fitBounds(squareBounds().pad(1.5));
+}
+
+const zooms = document.getElementById("zooms");
+for (const [z, text] of ZOOMS) {
+  const b = Object.assign(document.createElement("button"), { textContent: text });
+  b.dataset.z = z;
+  b.addEventListener("click", () => {
+    zoom = z;
+    try { localStorage.setItem("explorerZoom", z); } catch (e) {}
+    clearTile();
+    render(true);
+  });
+  zooms.append(b, " ");
+}
+document.getElementById("to-square").addEventListener("click", () => map.fitBounds(squareBounds().pad(1.5)));
+document.getElementById("to-all").addEventListener("click", () => map.fitBounds(allBounds()));
+// ---- runs through a tapped tile
+const fmtDate = d => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const fmtMiles = m => m.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtTime = s => { const m = Math.round(s / 60); return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`; };
+const fmtPace = (s, mi) => { if (!mi) return "–"; const p = Math.round(s / mi); return `${Math.floor(p / 60)}:${String(p % 60).padStart(2, "0")} /mi`; };
+const html = (tag, props = {}, ...children) => { const n = Object.assign(document.createElement(tag), props); n.append(...children); return n; };
+const PAGE_SIZE = 50;
+let selected = null, tileRuns = [], tilePage = 0;
+
+function toTile(lat, lon, z) {
+  const n = 2 ** z;
+  return [Math.floor((lon + 180) / 360 * n), Math.floor((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2 * n)];
+}
+function remember() {  // "#tile-Z-KEY-PAGE" brings the list back after visiting a run's map
+  history.replaceState(null, "", selected ? `#tile-${selected.z}-${selected.key}-${tilePage + 1}` : location.pathname);
+}
+function clearTile() {
+  selected = null; tileRuns = [];
+  document.getElementById("tile-card").hidden = true;
+  remember();
+  grid.redraw();
+}
+
+async function selectTile(z, key, page = 0, scroll = true) {
+  const n = 2 ** z;
+  selected = { z, key, x: Math.floor(key / n), y: key % n };
+  grid.redraw();
+  const card = document.getElementById("tile-card");
+  card.hidden = false;
+  document.getElementById("tile-count").textContent = "Loading…";
+  document.getElementById("tile-rows").replaceChildren();
+  document.getElementById("tile-pager").replaceChildren();
+  try {
+    const res = await fetch(`/tile?z=${z}&k=${key}`);
+    if (!res.ok) throw new Error(res.status);
+    tileRuns = (await res.json()).runs.map(r => ({ ...r, day: new Date(r.date + "T00:00:00") }));
+  } catch (e) {
+    document.getElementById("tile-count").textContent = "Couldn't load the runs for this tile. Is the dashboard still running?";
+    return;
+  }
+  if (!selected || selected.key !== key) return;  // another tile was tapped meanwhile
+  tilePage = Math.min(page, Math.max(0, Math.ceil(tileRuns.length / PAGE_SIZE) - 1));
+  renderTileRuns();
+  if (scroll && matchMedia("(max-width: 760px)").matches) card.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderTileRuns() {
+  const pages = Math.ceil(tileRuns.length / PAGE_SIZE), first = tilePage * PAGE_SIZE;
+  const slice = tileRuns.slice(first, first + PAGE_SIZE);
+  const oldest = tileRuns[tileRuns.length - 1], newest = tileRuns[0];
+  document.getElementById("tile-count").textContent = tileRuns.length
+    ? `${plural(tileRuns.length, "run")}, ${fmtDate(oldest.day)} to ${fmtDate(newest.day)}`
+    : "No runs found for this tile.";
+  document.getElementById("tile-rows").replaceChildren(...slice.map(r => {
+    const [hh, mm] = r.time.split(":").map(Number);
+    const weekday = r.day.toLocaleDateString("en-US", { weekday: "short" });
+    const clock = new Date(2000, 0, 1, hh, mm).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return html("tr", {},
+      html("td", {}, html("span", { className: "hide-narrow", textContent: `${weekday}, ` }), fmtDate(r.day)),
+      html("td", {}, html("a", { href: `/run?f=${encodeURIComponent(r.file)}`, textContent: r.name }),
+                     html("span", { className: "muted hide-narrow", textContent: ` · ${clock}` })),
+      html("td", { textContent: `${fmtMiles(r.miles)} mi` }),
+      html("td", { className: "hide-narrow", textContent: fmtTime(r.seconds) }),
+      html("td", { textContent: fmtPace(r.seconds, r.miles) }));
+  }));
+  const pager = document.getElementById("tile-pager");
+  if (pages <= 1) { pager.replaceChildren(); remember(); return; }
+  const go = (p, text, label) => {
+    const b = html("button", { textContent: text, disabled: p < 0 || p >= pages });
+    b.setAttribute("aria-label", label);
+    b.addEventListener("click", () => { tilePage = p; renderTileRuns(); document.getElementById("tile-card").scrollIntoView({ block: "start" }); });
+    return b;
+  };
+  pager.replaceChildren(go(tilePage - 1, "‹ Newer", "Newer runs"),
+    html("span", { textContent: `Page ${tilePage + 1} of ${pages}` }), go(tilePage + 1, "Older ›", "Older runs"));
+  remember();
+}
+
+map.on("click", e => {
+  const [x, y] = toTile(e.latlng.lat, e.latlng.lng, zoom), key = x * 2 ** zoom + y;
+  if (layers[zoom].keys.has(key)) selectTile(zoom, key);
+  else clearTile();
+});
+document.getElementById("tile-clear").addEventListener("click", clearTile);
+
+render(true);
+// coming back from a run's map: reopen the same tile, page and spot on the map
+const saved = location.hash.match(/^#tile-(\d+)-(\d+)-(\d+)$/);
+if (saved && layers[+saved[1]]) {
+  const [z, key, page] = [+saved[1], +saved[2], +saved[3] - 1];
+  if (z !== zoom) { zoom = z; render(false); }
+  const n = 2 ** z;
+  map.setView(boundsOf(Math.floor(key / n), key % n, Math.floor(key / n) + 1, key % n + 1, n).getCenter(), Math.max(map.getZoom(), z - 2));
+  selectTile(z, key, page, false);
+}
+</script>
+</body>
+</html>

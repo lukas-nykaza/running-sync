@@ -1,0 +1,29 @@
+# Your data: never committed (GPS tracks show where you live and run)
+COROS/
+HealthFit/
+garmin/
+*.fit
+*.zip
+shoes.json
+shoes.tmp
+icon.png
+
+# Secrets
+.env
+
+# Caches and state, rebuilt automatically
+state.json
+runs_cache.json
+tiles_cache.json
+heat_cache.json
+
+# Logs
+sync.log
+launchd.out
+launchd.err
+dashboard.out
+dashboard.err
+
+# Python / macOS
+__pycache__/
+.DS_Store

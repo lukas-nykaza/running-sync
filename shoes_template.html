@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running Shoes</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --border: rgba(11, 11, 11, 0.10);
+  --link: #256abf;
+  --danger: #b42318;
+  --button-active: #0b0b0b;
+  --button-active-text: #fcfcfb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --border: rgba(255, 255, 255, 0.10);
+    --link: #6da7ec;
+    --danger: #f97066;
+    --button-active: #f0efec;
+    --button-active-text: #1a1a19;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --border: rgba(255, 255, 255, 0.10);
+  --link: #6da7ec;
+  --danger: #f97066;
+  --button-active: #f0efec;
+  --button-active-text: #1a1a19;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+.back { color: var(--link); text-decoration: none; font-size: 14px; }
+.back:hover { text-decoration: underline; }
+h1 { font-size: 28px; font-weight: 650; margin: 8px 0 4px; }
+h2 { font-size: 18px; font-weight: 650; margin: 0 0 10px; }
+.sub { color: var(--text-secondary); margin: 0 0 20px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+form.add { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-secondary); }
+input {
+  font: inherit; font-size: 16px; padding: 8px 10px; border-radius: 8px; min-width: 0;
+  border: 1px solid var(--border); background: var(--page); color: var(--text-primary);
+}
+.add label.name { flex: 2 1 200px; }
+.add label.start { flex: 1 1 120px; }
+button {
+  font: inherit; font-size: 14px; padding: 7px 14px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-primary);
+}
+button:hover { border-color: var(--text-muted); }
+button.primary { background: var(--button-active); color: var(--button-active-text); border-color: var(--button-active); }
+button.danger { color: var(--danger); }
+.shoe-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.shoe-name { font-size: 18px; font-weight: 600; overflow-wrap: anywhere; }
+.miles { font-size: 32px; font-weight: 650; }
+.miles small { font-size: 16px; font-weight: 500; color: var(--text-secondary); margin-left: 3px; }
+.detail { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.edit { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-top: 12px; }
+.edit[hidden] { display: none; }
+.edit label { flex: 1 1 160px; }
+.message { min-height: 20px; color: var(--danger); font-size: 14px; margin: 4px 0 0; }
+.empty { color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">← Dashboard</a>
+  <h1>Shoes</h1>
+  <p class="sub">Assign a shoe on each run's page (tap a run, then pick from the Shoe menu). A shoe's mileage is
+    the miles of its runs, plus any miles you set by hand.</p>
+
+  <div class="card">
+    <h2>Add a shoe</h2>
+    <form class="add" id="add-form">
+      <label class="name">Name <input id="add-name" required maxlength="80" placeholder="e.g. Pegasus 41 (blue)" autocomplete="off"></label>
+      <label class="start">Miles already on them <input id="add-miles" type="number" inputmode="decimal" min="0" step="0.1" placeholder="0"></label>
+      <button class="primary" type="submit">Add shoe</button>
+    </form>
+    <p class="message" id="add-message" role="status"></p>
+  </div>
+
+  <div id="list"></div>
+</main>
+
+<script>
+let STATE = /*DATA*/null;
+const fmtMiles = m => m.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtDate = s => new Date(s + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const html = (tag, props = {}, ...children) => { const n = Object.assign(document.createElement(tag), props); n.append(...children); return n; };
+
+async function send(change) {
+  const res = await fetch("/api/shoes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change) });
+  const out = await res.json().catch(() => ({ error: "Couldn't save. Is the dashboard running?" }));
+  if (!res.ok) throw new Error(out.error || "Couldn't save");
+  STATE = out;
+  render();
+}
+
+function shoeCard(s) {
+  const message = html("p", { className: "message", role: "status" });
+  const fail = e => { message.textContent = e.message; };
+  const used = s.runs
+    ? `${s.runs.toLocaleString("en-US")} run${s.runs === 1 ? "" : "s"} · ` +
+      (s.first === s.last ? fmtDate(s.first) : `${fmtDate(s.first)} to ${fmtDate(s.last)}`)
+    : "No runs assigned yet";
+  const extra = Math.abs(s.miles - s.runMiles) >= 0.05
+    ? ` · ${fmtMiles(s.runMiles)} mi from runs, ${s.miles > s.runMiles ? "+" : "−"}${fmtMiles(Math.abs(s.miles - s.runMiles))} mi set by hand` : "";
+
+  // mileage editor
+  const milesInput = html("input", { type: "number", inputmode: "decimal", min: "0", step: "0.1", value: s.miles });
+  const milesForm = html("form", { className: "edit", hidden: true },
+    html("label", {}, "Total miles", milesInput), html("button", { className: "primary", type: "submit", textContent: "Save" }),
+    html("button", { type: "button", textContent: "Cancel", onclick: () => { milesForm.hidden = true; } }));
+  milesForm.addEventListener("submit", e => {
+    e.preventDefault();
+    send({ action: "set_miles", id: s.id, miles: milesInput.value }).catch(fail);
+  });
+
+  // rename
+  const nameInput = html("input", { value: s.name, maxLength: 80, required: true });
+  const nameForm = html("form", { className: "edit", hidden: true },
+    html("label", {}, "Name", nameInput), html("button", { className: "primary", type: "submit", textContent: "Save" }),
+    html("button", { type: "button", textContent: "Cancel", onclick: () => { nameForm.hidden = true; } }));
+  nameForm.addEventListener("submit", e => {
+    e.preventDefault();
+    send({ action: "rename", id: s.id, name: nameInput.value }).catch(fail);
+  });
+
+  const actions = html("div", { className: "actions" },
+    html("button", { textContent: "Edit mileage", onclick: () => { nameForm.hidden = true; milesForm.hidden = false; milesInput.focus(); } }),
+    html("button", { textContent: "Rename", onclick: () => { milesForm.hidden = true; nameForm.hidden = false; nameInput.focus(); } }),
+    html("button", { className: "danger", textContent: "Remove", onclick: () => {
+      const note = s.runs ? ` Its ${s.runs} run${s.runs === 1 ? "" : "s"} will go back to having no shoe.` : "";
+      if (confirm(`Remove "${s.name}"?${note}`)) send({ action: "remove", id: s.id }).catch(fail);
+    } }));
+
+  return html("div", { className: "card" },
+    html("div", { className: "shoe-head" },
+      html("div", { className: "shoe-name", textContent: s.name }),
+      html("div", { className: "miles", textContent: fmtMiles(s.miles) }, html("small", { textContent: "mi" }))),
+    html("div", { className: "detail", textContent: used + extra }),
+    actions, milesForm, nameForm, message);
+}
+
+function render() {
+  const list = document.getElementById("list");
+  const sorted = [...STATE.shoes].sort((a, b) => (b.last || "").localeCompare(a.last || "") || b.miles - a.miles);
+  list.replaceChildren(...(sorted.length ? sorted.map(shoeCard)
+    : [html("p", { className: "empty", textContent: "No shoes yet. Add your first pair above." })]));
+}
+
+document.getElementById("add-form").addEventListener("submit", e => {
+  e.preventDefault();
+  const name = document.getElementById("add-name"), miles = document.getElementById("add-miles");
+  const message = document.getElementById("add-message");
+  send({ action: "add", name: name.value, miles: miles.value || 0 })
+    .then(() => { name.value = ""; miles.value = ""; message.textContent = ""; })
+    .catch(err => { message.textContent = err.message; });
+});
+render();
+</script>
+</body>
+</html>
