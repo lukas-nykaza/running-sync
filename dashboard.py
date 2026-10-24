@@ -55,6 +55,7 @@ NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-(\d{2})(\d{2})(\d{2})-(.+?)-[^-]+\.f
 
 
 FIT_EPOCH = 631065600  # FIT timestamps count seconds from 1989-12-31 UTC
+SUMMARY_VERSION = 2  # bump when run_summary changes, so cached summaries are re-read
 
 
 def run_summary(path):
@@ -64,7 +65,7 @@ def run_summary(path):
     for num, fields in read_fit(path):
         if num == 18:  # session
             meters += (fields.get(9) or 0) / 100
-            seconds += (fields.get(7) or 0) / 1000
+            seconds += (fields.get(8) or fields.get(7) or 0) / 1000  # timer time; elapsed if missing
             sport = fields.get(5) if sport is None else sport
             sub_sport = fields.get(6) if sub_sport is None else sub_sport
             start = fields.get(2) if start is None else start
@@ -91,7 +92,7 @@ def load_runs():
         for path in sorted(folder.glob("*.fit")):
             m = NAME_RE.match(path.name)
             key = f"{folder.name}/{path.name}"
-            stamp = f"{path.stat().st_size}:{int(path.stat().st_mtime)}"
+            stamp = f"{path.stat().st_size}:{int(path.stat().st_mtime)}:{SUMMARY_VERSION}"
             entry = cache.get(key)
             if not entry or entry["stamp"] != stamp or (not m and "start" not in entry):
                 try:
