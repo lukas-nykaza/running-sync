@@ -69,6 +69,9 @@ section { margin-top: 40px; }
 section > h2 { font-size: 22px; font-weight: 650; margin: 0 0 4px; }
 .sub { color: var(--text-secondary); margin: 0 0 16px; }
 .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.custom { display: flex; gap: 8px 16px; flex-wrap: wrap; margin: -6px 0 16px; }
+.custom[hidden] { display: none; }
+.custom label { color: var(--text-secondary); font-size: 14px; }
 button {
   font: inherit; font-size: 14px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
   border: 1px solid var(--border); background: var(--surface); color: var(--text-primary);
@@ -126,7 +129,7 @@ footer { color: var(--text-muted); font-size: 13px; margin-top: 32px; }
 .runs-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 .runs-bar .count { color: var(--text-secondary); font-size: 14px; }
 .runs-bar label { color: var(--text-secondary); font-size: 14px; }
-select {
+select, input[type="date"] {
   font: inherit; font-size: 14px; padding: 5px 10px; border-radius: 8px; margin-left: 6px;
   border: 1px solid var(--border); background: var(--surface); color: var(--text-primary);
 }
@@ -240,6 +243,7 @@ const fmtMiles = m => m.toLocaleString("en-US", { minimumFractionDigits: 1, maxi
 const fmtWhole = m => Math.round(m).toLocaleString("en-US");
 const fmtTime = s => { const m = Math.round(s / 60); return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`; };
 const fmtPace = (s, mi) => { if (!mi) return "–"; const p = Math.round(s / mi); return `${Math.floor(p / 60)}:${String(p % 60).padStart(2, "0")} /mi`; };
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const plural = (n, word) => `${n.toLocaleString("en-US")} ${word}${n === 1 ? "" : "s"}`;
 
 // ---------- grouping ----------
@@ -282,7 +286,7 @@ function niceStep(max, ticks) {
 }
 const summaryLine = d => d.runs ? `${plural(d.runs, "run")} · ${fmtTime(d.seconds)}` : "No runs";
 const sum = (rows, key) => rows.reduce((s, r) => s + r[key], 0);
-function load(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : +v; } catch (e) { return fallback; } }
+function load(key, fallback) { try { const v = localStorage.getItem(key); return v === null || v === "" ? fallback : +v; } catch (e) { return fallback; } }
 function save(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
 
 // ---------- column chart ----------
@@ -403,17 +407,17 @@ function tile(label, value, unit, note) {
 // Each has its own time-range buttons scoping its tiles, chart and table.
 const SECTIONS = [
   { id: "week", rows: WEEKS, unit: "week", store: "range", initial: 52,
-    ranges: [[12, "12 weeks"], [26, "6 months"], [52, "1 year"], [156, "3 years"], [0, "All time"]],
+    ranges: [[12, "12 weeks"], [26, "6 months"], [52, "1 year"], [156, "3 years"], [0, "All time"], [-1, "Custom"]],
     label: d => fmtDate(d.date), rangeLabel: (a, b) => `${fmtDate(a.date)} – ${fmtDate(new Date(+b.date + 6 * DAY))}`,
     since: d => fmtDate(d.date, false), recent: [4, "4-week average", "the 4 full weeks before this one"],
     chart: { tick: timeTick(120), title: d => `Week of ${fmtDate(d.date)}` } },
   { id: "month", rows: MONTHS, unit: "month", store: "monthRange", initial: 24,
-    ranges: [[12, "1 year"], [24, "2 years"], [60, "5 years"], [0, "All time"]],
+    ranges: [[12, "1 year"], [24, "2 years"], [60, "5 years"], [0, "All time"], [-1, "Custom"]],
     label: d => fmtMonth(d.date), rangeLabel: (a, b) => `${fmtShortMonth(a.date)} – ${fmtShortMonth(b.date)}`,
     since: d => fmtDate(d.date, false), recent: [3, "3-month average", "the 3 full months before this one"],
     chart: { tick: timeTick(36), title: d => fmtMonth(d.date) } },
   { id: "year", rows: YEARS, unit: "year", store: "yearRange", initial: 0,
-    ranges: [[3, "3 years"], [5, "5 years"], [0, "All time"]],
+    ranges: [[3, "3 years"], [5, "5 years"], [0, "All time"], [-1, "Custom"]],
     label: d => String(d.date.getFullYear()), rangeLabel: (a, b) => `${a.date.getFullYear()} – ${b.date.getFullYear()}`,
     since: d => fmtDate(d.date, false), recent: [1, "Last year", "the full year before this one"],
     chart: { tick: d => String(d.date.getFullYear()), title: d => String(d.date.getFullYear()),
@@ -428,15 +432,68 @@ for (const s of SECTIONS) {
   const filters = root.querySelector(".filters");
   for (const [n, text] of s.ranges) {
     const b = html("button", { textContent: text });
-    b.addEventListener("click", () => { s.range = n; save(s.store, n); renderSection(s); });
+    b.addEventListener("click", () => {
+      // the first time, Custom starts from whatever range is showing
+      if (n === -1 && s.from == null) [s.from, s.to] = [+s.shown[0].date, +s.shown[s.shown.length - 1].date];
+      s.range = n; save(s.store, n); renderSection(s);
+    });
     filters.append(b);
   }
   s.buttons = [...filters.children];
+  s.from = load(s.store + "From", null);
+  s.to = load(s.store + "To", null);
+  s.custom = customPickers(s);
+  filters.after(s.custom);
+}
+
+// From/To pickers for the Custom range: a date for weeks (any day picks its week), a list for months and years.
+// s.from and s.to hold the start dates of the first and last period shown.
+function customPickers(s) {
+  const box = html("div", { className: "custom", hidden: true });
+  const picker = (text, key) => {
+    let input;
+    if (s.unit === "week") {
+      input = html("input", { type: "date", min: iso(s.rows[0].date), max: iso(new Date()) });
+    } else {
+      input = html("select");
+      for (const d of [...s.rows].reverse()) input.append(html("option", { value: +d.date, textContent: s.label(d) }));
+    }
+    input.addEventListener("change", () => {
+      if (!input.value) return;
+      s[key] = s.unit === "week" ? +monday(new Date(input.value + "T00:00:00")) : +input.value;
+      if (s.from > s.to) [s.from, s.to] = [s.to, s.from];
+      renderSection(s);
+    });
+    box.append(html("label", {}, text, input));
+    return input;
+  };
+  s.fromInput = picker("From", "from");
+  s.toInput = picker("To", "to");
+  return box;
+}
+
+function customRows(s) {
+  const rows = s.rows;
+  let a = rows.findIndex(d => +d.date >= s.from), b = rows.findLastIndex(d => +d.date <= s.to);
+  if (a < 0) a = rows.length - 1;
+  if (b < a) b = a;
+  const shown = rows.slice(a, b + 1);
+  [s.from, s.to] = [+shown[0].date, +shown[shown.length - 1].date];
+  save(s.store + "From", s.from); save(s.store + "To", s.to);
+  if (s.unit === "week") {  // the To date shows the week's Sunday
+    s.fromInput.value = iso(shown[0].date);
+    const end = shown[shown.length - 1].date;
+    s.toInput.value = iso(new Date(end.getFullYear(), end.getMonth(), end.getDate() + 6));
+  } else {
+    s.fromInput.value = s.from; s.toInput.value = s.to;
+  }
+  return shown;
 }
 
 function renderSection(s) {
   const root = document.getElementById(s.id), rows = s.rows;
-  const shown = s.range > 0 ? rows.slice(-s.range) : rows;
+  const shown = s.shown = s.range === -1 ? customRows(s) : s.range > 0 ? rows.slice(-s.range) : rows;
+  s.custom.hidden = s.range !== -1;
   s.buttons.forEach((b, i) => b.setAttribute("aria-pressed", s.ranges[i][0] === s.range));
   root.querySelector(".sub").textContent = s.rangeLabel(shown[0], shown[shown.length - 1]);
 
